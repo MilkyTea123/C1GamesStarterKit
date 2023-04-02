@@ -2,10 +2,10 @@ import math
 import json
 import sys
 
-from navigation import ShortestPathFinder
-from util import send_command, debug_write
-from unit import GameUnit
-from game_map import GameMap
+from .navigation import ShortestPathFinder
+from .util import send_command, debug_write
+from .unit import GameUnit
+from .game_map import GameMap
 
 def is_stationary(unit_type):
     """

@@ -2,7 +2,7 @@ import heapq
 import math
 import sys
 import queue
-from util import debug_write
+from .util import debug_write
 
 class Node:
     """A pathfinding node
