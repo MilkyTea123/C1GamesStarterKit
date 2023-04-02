@@ -1,7 +1,7 @@
 import unittest
 import json
-from .game_state import GameState
-from .unit import GameUnit
+from game_state import GameState
+from unit import GameUnit
 
 class BasicTests(unittest.TestCase):
 
@@ -274,4 +274,3 @@ class BasicTests(unittest.TestCase):
     def future_turn_testing_function(self, game, expected, turns):
         actual = game.project_future_MP(turns)
         self.assertAlmostEqual(actual, expected, 0, "Expected {} MP {} turns from now, got {}".format(expected, turns, actual))
-

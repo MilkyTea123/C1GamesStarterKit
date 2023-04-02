@@ -1,6 +1,6 @@
 import math
-from .unit import GameUnit
-from .util import debug_write
+from unit import GameUnit
+from util import debug_write
 
 class GameMap:
     """Holds data about the current game map and provides functions
@@ -238,3 +238,4 @@ class GameMap:
         """
         if(self.enable_warnings):
             debug_write(message)
+            

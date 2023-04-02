@@ -19,11 +19,11 @@ Investigating it is useful for advanced player who want to optimize the slow def
 util.py contains a small handful of functions that help with communication, including the debug-printing function, debug_write().
 """
 
-from .algocore import AlgoCore
-from .util import debug_write
-from .game_state import GameState
-from .unit import GameUnit
-from .game_map import GameMap
+from algocore import AlgoCore
+from util import debug_write
+from game_state import GameState
+from unit import GameUnit
+from game_map import GameMap
 
 __all__ = ["algocore", "game_state", "game_map", "navigation", "unit", "util"]
  

@@ -236,3 +236,4 @@ class AlgoStrategy(gamelib.AlgoCore):
 if __name__ == "__main__":
     algo = AlgoStrategy()
     algo.start()
+    
