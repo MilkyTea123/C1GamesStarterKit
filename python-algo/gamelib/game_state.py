@@ -331,7 +331,8 @@ class GameState:
 
         """
         if unit_type not in ALL_UNITS:
-            self._invalid_unit(unit_type)
+            if self.enable_warnings:
+                self._invalid_unit(unit_type)
             return
 
         if not self.game_map.in_arena_bounds(location):

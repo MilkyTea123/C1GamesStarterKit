@@ -3,6 +3,7 @@ from gym import Env
 from gym.spaces import Discrete, Box, Dict, Tuple, MultiBinary, MultiDiscrete
 
 import numpy as np
+import math
 import random
 import os
 
@@ -20,32 +21,30 @@ import json
 from gamelib.game_state import GameState
 from gamelib.util import get_command, debug_write, BANNER_TEXT, send_command
 
+
 class GameEnv(Env):
+
     def __init__(self):
-        self.action_space = MultiDiscrete(np.ones((28,28))*3)
+        self.NUMUNITS = 6
+        self.action_space = MultiDiscrete(np.ones((14, 28))*self.NUMUNITS)
         self.observation_space = Dict({
-            'board': MultiDiscrete(np.stack([np.ones((28,28))*3, np.ones((28,28))*1000], axis=2)),
-            'p1Stats': MultiDiscrete([500,500,30]), # [SP,MP,Health]
-            'p2Stats': MultiDiscrete([500,500,30])
-            })
+            'board': MultiDiscrete(np.stack([np.ones((28, 28))*self.NUMUNITS*10, np.ones((28, 28))*1000], axis=2)),
+            'p1Stats': MultiDiscrete([5000, 5000, 40]),  # [SP,MP,Health] (SP and MP are x10)
+            'p2Stats': MultiDiscrete([5000, 5000, 40])
+        })
         seed = random.randrange(maxsize)
         random.seed(seed)
         gamelib.debug_write('Random seed: {}'.format(seed))
 
         self.state = {
-            'board': -np.ones((28,28,2)),
-            'p1Stats': [40,5,30],
-            'p2Stats': [40,5,30]
+            'board': -np.ones((28, 28, 2)),
+            'p1Stats': [40, 5, 30],
+            'p2Stats': [40, 5, 30]
         }
+
 
     def reset(self):
         self.__init__()
-
-    # def step(self):
-
-    #     info = {}
-
-    #     # return self.state, reward, done, info
 
     def on_game_start(self, config):
         """ 
@@ -54,18 +53,20 @@ class GameEnv(Env):
         gamelib.debug_write('Configuring your custom algo strategy...')
         self.config = config
         global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP
+        global UNIT_TYPES
         WALL = config["unitInformation"][0]["shorthand"]
         SUPPORT = config["unitInformation"][1]["shorthand"]
         TURRET = config["unitInformation"][2]["shorthand"]
         SCOUT = config["unitInformation"][3]["shorthand"]
         DEMOLISHER = config["unitInformation"][4]["shorthand"]
         INTERCEPTOR = config["unitInformation"][5]["shorthand"]
+        UNIT_TYPES = [WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR]
         MP = 1
         SP = 0
         # This is a good place to do initial setup
         self.scored_on_locations = []
 
-    def on_turn(self, turn_state):
+    def on_turn(self, turn_state, structures=None, mobiles=None):
         """
         This function is called every turn with the game state wrapper as
         an argument. The wrapper stores the state of the arena and has methods
@@ -78,10 +79,18 @@ class GameEnv(Env):
 
         game_state.attempt_spawn(DEMOLISHER, [24, 10], 3)
 
-        gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
-        game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
+        gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(
+            game_state.turn_number))
+        # Comment or remove this line to enable warnings.
+        game_state.suppress_warnings(True)
 
-        self.starter_strategy(game_state)
+        # self.starter_strategy(game_state)
+        if structures != None:
+            for structure in structures:
+                game_state.attempt_spawn(UNIT_TYPES[structure[0]], [structure[1], structure[2]])
+        if mobiles != None:
+            for mobile in mobiles:
+                game_state.attempt_spawn(UNIT_TYPES[mobile[0]], [mobile[1], mobile[2]])
 
         game_state.submit_turn()
 
@@ -99,14 +108,128 @@ class GameEnv(Env):
         for breach in breaches:
             location = breach[0]
             unit_owner_self = True if breach[4] == 1 else False
-            # When parsing the frame data directly, 
+            # When parsing the frame data directly,
             # 1 is integer for yourself, 2 is opponent (StarterKit code uses 0, 1 as player_index instead)
             if not unit_owner_self:
                 gamelib.debug_write("Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
-                gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
+                gamelib.debug_write(
+                    "All locations: {}".format(self.scored_on_locations))
 
-    def step(self, action, model=None):
+    def start(self):
+        """
+        Start the parsing loop.
+        After starting the algo, it will wait until it recieves information from the game 
+        engine, proccess this information, and respond if needed to take it's turn. 
+        The algo continues this loop until it recieves the "End" turn message from the game.
+        """
+        debug_write(BANNER_TEXT)
+
+        done = False
+        reward = 2
+        obs_space = self.state
+
+        while True:
+            # Note: Python blocks and hangs on stdin. Can cause issues if connections aren't setup properly and may need to
+            # manually kill this Python program.
+            game_state_string = get_command()
+            if "replaySave" in game_state_string:
+                """
+                This means this must be the config file. So, load in the config file as a json and add it to your AlgoStrategy class.
+                """
+                parsed_config = json.loads(game_state_string)
+                self.on_game_start(parsed_config)
+            elif "turnInfo" in game_state_string:
+                state = json.loads(game_state_string)
+                stateType = int(state.get("turnInfo")[0])
+                if stateType == 0:
+
+                    """
+                    This is the game turn game state message. Algo must now print to stdout 2 lines, one for build phase one for
+                    deploy phase. Printing is handled by the provided functions.
+                    """
+
+                    game_state = GameState(self.config, game_state_string)
+
+                    action = np.array(self.action_space.sample())
+                    debug_write(action)
+                    def gen_plan(action): 
+                        invalid = 0
+                        valid = 0
+                        struct_queue = []
+                        mobile_queue = []
+
+                        game_state.suppress_warnings(True)
+                        for y in range(game_state.game_map.HALF_ARENA): # goes through every coordinate point
+                            for x in range(game_state.game_map.ARENA_SIZE):
+                                if action[y,x] >= 0:
+                                    if action[y,x] == game_state.get_positions()[y,x,0] and action[y,x] < 3: # if structure exists
+                                        struct_queue.append((action[y,x],x,y,True))
+                                    elif not game_state.can_spawn(UNIT_TYPES[action[y,x] % self.NUMUNITS],
+                                                                  [x,y],
+                                                                  math.ceil(float(action[y,x])/self.NUMUNITS)):
+                                        invalid += 1
+                                    else:
+                                        if action[y,x] < 3: # if structure
+                                            struct_queue.append((action[y,x],x,y,False))
+                                        else: # if mobile
+                                            val = action[y,x]
+                                            for _ in range(math.ceil(float(val)/self.NUMUNITS)):
+                                                mobile_queue.append((val%self.NUMUNITS,x,y))
+                        game_state.suppress_warnings(False)
+
+                        random.shuffle(struct_queue)
+                        random.shuffle(mobile_queue)
+                        
+                        sp = np.array([game_state.type_cost(UNIT_TYPES[unit[0]],unit[3])[0]
+                                            for unit in struct_queue]).sum() # Structure Points
+                        mp = np.array([game_state.type_cost(UNIT_TYPES[unit[0]])[1]
+                                            for unit in struct_queue]).sum() # Mobile Points
+
+                        budget = game_state.get_resources()
+
+                        while (len(struct_queue) > 0 and sp > budget[0]):
+                            sp -= game_state.type_cost(UNIT_TYPES[struct_queue.pop(0)[0]])[0]
+                            invalid += 1
+                        while len(mobile_queue) > 0 and mp > budget[1]:
+                            mp -= game_state.type_cost(UNIT_TYPES[mobile_queue.pop(0)[0]])[1]
+                            invalid += 1
+
+                        valid = len(struct_queue) + len(mobile_queue)
+
+                        return valid, invalid, struct_queue, mobile_queue
+
+                    valid, invalid, structures, mobiles = gen_plan(action)
+
+                    self.on_turn(game_state_string, structures, mobiles)
+
+                elif stateType == 1:
+                    """
+                    If stateType == 1, this game_state_string string represents a single frame of an action phase
+                    """
+                    self.on_action_frame(game_state_string)
+                elif stateType == 2:
+                    """
+                    This is the end game message. This means the game is over so break and finish the program.
+                    """
+                    debug_write("Got end state, game over. Stopping algo.")
+                    done = True
+                    break
+                else:
+                    """
+                    Something is wrong? Received an incorrect or improperly formatted string.
+                    """
+                    debug_write("Got unexpected string with turnInfo: {}".format(
+                        game_state_string))
+            else:
+                """
+                Something is wrong? Received an incorrect or improperly formatted string.
+                """
+                debug_write("Got unexpected string : {}".format(game_state_string))
+
+        return obs_space, reward, done, None    
+
+    def step(self, action=None, model=None):
         """ 
         Start the parsing loop.
         After starting the algo, it will wait until it recieves information from the game 
@@ -116,7 +239,7 @@ class GameEnv(Env):
         debug_write(BANNER_TEXT)
 
         done = False
-        reward = 0
+        reward = 2
         obs_space = self.state
 
         # Note: Python blocks and hangs on stdin. Can cause issues if connections aren't setup properly and may need to
@@ -136,7 +259,59 @@ class GameEnv(Env):
                 This is the game turn game state message. Algo must now print to stdout 2 lines, one for build phase one for
                 deploy phase. Printing is handled by the provided functions.
                 """
-                self.on_turn(game_state_string)
+
+                game_state = GameState(self.config, game_state_string)
+
+                action = np.array(self.action_space.sample())
+                def gen_plan(action): 
+                    invalid = 0
+                    valid = 0
+                    struct_queue = []
+                    mobile_queue = []
+
+                    game_state.suppress_warnings(True)
+                    for y in range(action.shape[0]): # goes through every coordinate point
+                        for x in range(action.shape[1]):
+                            if action[x,y] >= 0:
+                                if action[x,y] == game_state.get_positions()[x,y,0] and action[x,y] < 3: # if structure exists
+                                    struct_queue.append((action[x,y],x,y,True))
+                                elif not game_state.can_spawn(UNIT_TYPES[action[x,y] % self.NUMUNITS],
+                                                                [x,y],
+                                                                math.ceil(float(action[x,y])/self.NUMUNITS)):
+                                    invalid += 1
+                                else:
+                                    if action[x,y] < 3: # if structure
+                                        struct_queue.append((action[x,y],x,y,False))
+                                    else: # if mobile
+                                        val = action[x,y]
+                                        for _ in range(math.ceil(float(val)/self.NUMUNITS)):
+                                            mobile_queue.append((val%self.NUMUNITS,x,y))
+                    game_state.suppress_warnings(False)
+
+                    random.shuffle(struct_queue)
+                    random.shuffle(mobile_queue)
+                    
+                    sp = np.array([game_state.type_cost(UNIT_TYPES[unit[0]],unit[3])[0]
+                                        for unit in struct_queue]).sum() # Structure Points
+                    mp = np.array([game_state.type_cost(UNIT_TYPES[unit[0]])[1]
+                                        for unit in struct_queue]).sum() # Mobile Points
+
+                    budget = game_state.get_resources()
+
+                    while (len(struct_queue) > 0 and sp > budget[0]):
+                        sp -= game_state.type_cost(UNIT_TYPES[struct_queue.pop(0)[0]])[0]
+                        invalid += 1
+                    while len(mobile_queue) > 0 and mp > budget[1]:
+                        mp -= game_state.type_cost(UNIT_TYPES[mobile_queue.pop(0)[0]])[1]
+                        invalid += 1
+
+                    valid = len(struct_queue) + len(mobile_queue)
+
+                    return valid, invalid, struct_queue, mobile_queue
+
+                valid, invalid, structures, mobiles = gen_plan(action)
+
+                self.on_turn(game_state_string, structures, mobiles)
 
             elif stateType == 1:
                 """
@@ -153,12 +328,13 @@ class GameEnv(Env):
                 """
                 Something is wrong? Received an incorrect or improperly formatted string.
                 """
-                debug_write("Got unexpected string with turnInfo: {}".format(game_state_string))
+                debug_write("Got unexpected string with turnInfo: {}".format(
+                    game_state_string))
         else:
             """
             Something is wrong? Received an incorrect or improperly formatted string.
             """
-            debug_write("Got unexpected string : {}".format(game_state_string))
+            debug_write("Got unexpected string : {}".format(game_state_string)) 
 
         return obs_space, reward, done, None
 
@@ -175,10 +351,10 @@ class GameEnv(Env):
         self.build_reactive_defense(game_state)
 
         if game_state.turn_number >= 2:
-            gamelib.debug_write('pre', game_state.get_positions()[8,8])
-            if (game_state.attempt_spawn(WALL, [8,8], 1) > 0):
+            gamelib.debug_write('pre', game_state.get_positions()[8, 8])
+            if (game_state.attempt_spawn(WALL, [8, 8], 1) > 0):
                 gamelib.debug_write('spawned wall (8,8)')
-                gamelib.debug_write('post', game_state.get_positions()[8,8])
+                gamelib.debug_write('post', game_state.get_positions()[8, 8])
 
         # If the turn is less than 5, stall with interceptors and wait to see enemy's base
         if game_state.turn_number < 5:
@@ -196,7 +372,8 @@ class GameEnv(Env):
                 if game_state.turn_number % 2 == 1:
                     # To simplify we will just check sending them from back left and right
                     scout_spawn_location_options = [[13, 0], [14, 0]]
-                    best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
+                    best_location = self.least_damage_spawn_location(
+                        game_state, scout_spawn_location_options)
                     game_state.attempt_spawn(SCOUT, best_location, 1000)
 
                 # Lastly, if we have spare SP, let's build some supports
@@ -212,10 +389,11 @@ class GameEnv(Env):
         # More community tools available at: https://terminal.c1games.com/rules#Download
 
         # Place turrets that attack enemy units
-        turret_locations = [[0, 13], [27, 13], [8, 11], [19, 11], [13, 11], [14, 11]]
+        turret_locations = [[0, 13], [27, 13], [
+            8, 11], [19, 11], [13, 11], [14, 11]]
         # attempt_spawn will try to spawn units if we have resources, and will check if a blocking unit is already there
         game_state.attempt_spawn(TURRET, turret_locations)
-        
+
         # Place walls in front of turrets to soak up damage for them
         wall_locations = [[8, 12], [19, 12]]
         game_state.attempt_spawn(WALL, wall_locations)
@@ -238,18 +416,20 @@ class GameEnv(Env):
         Send out interceptors at random locations to defend our base from enemy moving units.
         """
         # We can spawn moving units on our edges so a list of all our edge locations
-        friendly_edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
-        
-        # Remove locations that are blocked by our own structures 
+        friendly_edges = game_state.game_map.get_edge_locations(
+            game_state.game_map.BOTTOM_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
+
+        # Remove locations that are blocked by our own structures
         # since we can't deploy units there.
-        deploy_locations = self.filter_blocked_locations(friendly_edges, game_state)
-        
+        deploy_locations = self.filter_blocked_locations(
+            friendly_edges, game_state)
+
         # While we have remaining MP to spend lets send out interceptors randomly.
         while game_state.get_resource(MP) >= game_state.type_cost(INTERCEPTOR)[MP] and len(deploy_locations) > 0:
             # Choose a random deploy location.
             deploy_index = random.randint(0, len(deploy_locations) - 1)
             deploy_location = deploy_locations[deploy_index]
-            
+
             game_state.attempt_spawn(INTERCEPTOR, deploy_location)
             """
             We don't have to remove the location since multiple mobile 
@@ -291,13 +471,14 @@ class GameEnv(Env):
             damage = 0
             for path_location in path:
                 # Get number of enemy turrets that can attack each location and multiply by turret damage
-                damage += len(game_state.get_attackers(path_location, 0)) * gamelib.GameUnit(TURRET, game_state.config).damage_i
+                damage += len(game_state.get_attackers(path_location, 0)) * \
+                    gamelib.GameUnit(TURRET, game_state.config).damage_i
             damages.append(damage)
-        
+
         # Now just return the location that takes the least damage
         return location_options[damages.index(min(damages))]
 
-    def detect_enemy_unit(self, game_state, unit_type=None, valid_x = None, valid_y = None):
+    def detect_enemy_unit(self, game_state, unit_type=None, valid_x=None, valid_y=None):
         total_units = 0
         for location in game_state.game_map:
             if game_state.contains_stationary_unit(location):
@@ -305,7 +486,7 @@ class GameEnv(Env):
                     if unit.player_index == 1 and (unit_type is None or unit.unit_type == unit_type) and (valid_x is None or location[0] in valid_x) and (valid_y is None or location[1] in valid_y):
                         total_units += 1
         return total_units
-        
+
     def filter_blocked_locations(self, locations, game_state):
         filtered = []
         for location in locations:
@@ -313,3 +494,5 @@ class GameEnv(Env):
                 filtered.append(location)
         return filtered
 
+env = GameEnv()
+env.start()
