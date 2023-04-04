@@ -23,10 +23,20 @@ from gamelib.util import get_command, debug_write, BANNER_TEXT, send_command
 class GameEnv(Env):
     def __init__(self):
         self.action_space = MultiDiscrete(np.ones((28,28))*3)
-        self.observation_space = Dict()
+        self.observation_space = Dict({
+            'board': MultiDiscrete(np.stack([np.ones((28,28))*3, np.ones((28,28))*1000], axis=2)),
+            'p1Stats': MultiDiscrete([500,500,30]), # [SP,MP,Health]
+            'p2Stats': MultiDiscrete([500,500,30])
+            })
         seed = random.randrange(maxsize)
         random.seed(seed)
         gamelib.debug_write('Random seed: {}'.format(seed))
+
+        self.state = {
+            'board': -np.ones((28,28,2)),
+            'p1Stats': [40,5,30],
+            'p2Stats': [40,5,30]
+        }
 
     def reset(self):
         self.__init__()
@@ -96,7 +106,7 @@ class GameEnv(Env):
                 self.scored_on_locations.append(location)
                 gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
 
-    def step(self, model=None):
+    def step(self, action, model=None):
         """ 
         Start the parsing loop.
         After starting the algo, it will wait until it recieves information from the game 
@@ -107,6 +117,7 @@ class GameEnv(Env):
 
         done = False
         reward = 0
+        obs_space = self.state
 
         # Note: Python blocks and hangs on stdin. Can cause issues if connections aren't setup properly and may need to
         # manually kill this Python program.
@@ -149,7 +160,7 @@ class GameEnv(Env):
             """
             debug_write("Got unexpected string : {}".format(game_state_string))
 
-        return None, reward, done, None
+        return obs_space, reward, done, None
 
     def starter_strategy(self, game_state):
         """
