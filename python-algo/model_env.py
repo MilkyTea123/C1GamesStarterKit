@@ -21,6 +21,8 @@ import json
 from gamelib.game_state import GameState
 from gamelib.util import get_command, debug_write, BANNER_TEXT, send_command
 
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 class GameEnv(Env):
 
