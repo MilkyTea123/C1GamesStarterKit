@@ -42,6 +42,12 @@ class GameEnv(Env):
             'p2Stats': [40, 5, 30]
         }
 
+    def dict_to_space(self):
+        obs_space = Dict({
+            'board': MultiDiscrete(self.state['board']),
+            'p1Stats': MultiDiscrete(self.state['p1Stats']),
+            'p2Stats': MultiDiscrete(self.state['p2Stats'])
+        })
 
     def reset(self):
         self.__init__()
@@ -129,117 +135,123 @@ class GameEnv(Env):
                     "All locations: {}".format(self.scored_on_locations))
 
     def start(self):
-        """
-        Start the parsing loop.
-        After starting the algo, it will wait until it recieves information from the game 
-        engine, proccess this information, and respond if needed to take it's turn. 
-        The algo continues this loop until it recieves the "End" turn message from the game.
-        """
-        debug_write(BANNER_TEXT)
+        log_path = os.path.join('Training', 'Logs')
+        model = PPO('MultiInputPolicy', env, verbose=1, tensorboard_log=log_path)
+        model.learn(total_timesteps=20000)
 
-        done = False
-        reward = 2
-        obs_space = self.state
+        save_path = os.path.join('Training', 'Saved Models', 'Save_PPO')
+        model.save(save_path)
+        # """
+        # Start the parsing loop.
+        # After starting the algo, it will wait until it recieves information from the game 
+        # engine, proccess this information, and respond if needed to take it's turn. 
+        # The algo continues this loop until it recieves the "End" turn message from the game.
+        # """
+        # debug_write(BANNER_TEXT)
 
-        while True:
-            # Note: Python blocks and hangs on stdin. Can cause issues if connections aren't setup properly and may need to
-            # manually kill this Python program.
-            game_state_string = get_command()
-            if "replaySave" in game_state_string:
-                """
-                This means this must be the config file. So, load in the config file as a json and add it to your AlgoStrategy class.
-                """
-                parsed_config = json.loads(game_state_string)
-                self.on_game_start(parsed_config)
-            elif "turnInfo" in game_state_string:
-                state = json.loads(game_state_string)
-                stateType = int(state.get("turnInfo")[0])
-                if stateType == 0:
+        # done = False
+        # reward = 2
+        # obs_space = self.state
 
-                    """
-                    This is the game turn game state message. Algo must now print to stdout 2 lines, one for build phase one for
-                    deploy phase. Printing is handled by the provided functions.
-                    """
+        # while True:
+        #     # Note: Python blocks and hangs on stdin. Can cause issues if connections aren't setup properly and may need to
+        #     # manually kill this Python program.
+        #     game_state_string = get_command()
+        #     if "replaySave" in game_state_string:
+        #         """
+        #         This means this must be the config file. So, load in the config file as a json and add it to your AlgoStrategy class.
+        #         """
+        #         parsed_config = json.loads(game_state_string)
+        #         self.on_game_start(parsed_config)
+        #     elif "turnInfo" in game_state_string:
+        #         state = json.loads(game_state_string)
+        #         stateType = int(state.get("turnInfo")[0])
+        #         if stateType == 0:
 
-                    game_state = GameState(self.config, game_state_string)
+        #             """
+        #             This is the game turn game state message. Algo must now print to stdout 2 lines, one for build phase one for
+        #             deploy phase. Printing is handled by the provided functions.
+        #             """
 
-                    action = np.array(self.action_space.sample())
-                    debug_write(action)
-                    def gen_plan(action): 
-                        invalid = 0
-                        valid = 0
-                        struct_queue = []
-                        mobile_queue = []
+        #             game_state = GameState(self.config, game_state_string)
 
-                        game_state.suppress_warnings(True)
-                        for y in range(game_state.game_map.HALF_ARENA): # goes through every coordinate point
-                            for x in range(game_state.game_map.ARENA_SIZE):
-                                if action[y,x] >= 0:
-                                    if action[y,x] == game_state.get_positions()[y,x,0] and action[y,x] < 3: # if structure exists
-                                        struct_queue.append((action[y,x],x,y,True))
-                                    elif not game_state.can_spawn(UNIT_TYPES[action[y,x] % self.NUMUNITS],
-                                                                  [x,y],
-                                                                  math.ceil(float(action[y,x])/self.NUMUNITS)):
-                                        invalid += 1
-                                    else:
-                                        if action[y,x] < 3: # if structure
-                                            struct_queue.append((action[y,x],x,y,False))
-                                        else: # if mobile
-                                            val = action[y,x]
-                                            for _ in range(math.ceil(float(val)/self.NUMUNITS)):
-                                                mobile_queue.append((val%self.NUMUNITS,x,y))
-                        game_state.suppress_warnings(False)
+        #             action = np.array(self.action_space.sample())
+        #             debug_write(action)
+        #             def gen_plan(action): 
+        #                 invalid = 0
+        #                 valid = 0
+        #                 struct_queue = []
+        #                 mobile_queue = []
 
-                        random.shuffle(struct_queue)
-                        random.shuffle(mobile_queue)
+        #                 game_state.suppress_warnings(True)
+        #                 for y in range(game_state.game_map.HALF_ARENA): # goes through every coordinate point
+        #                     for x in range(game_state.game_map.ARENA_SIZE):
+        #                         if action[y,x] >= 0:
+        #                             if action[y,x] == game_state.get_positions()[y,x,0] and action[y,x] < 3: # if structure exists
+        #                                 struct_queue.append((action[y,x],x,y,True))
+        #                             elif not game_state.can_spawn(UNIT_TYPES[action[y,x] % self.NUMUNITS],
+        #                                                           [x,y],
+        #                                                           math.ceil(float(action[y,x])/self.NUMUNITS)):
+        #                                 invalid += 1
+        #                             else:
+        #                                 if action[y,x] < 3: # if structure
+        #                                     struct_queue.append((action[y,x],x,y,False))
+        #                                 else: # if mobile
+        #                                     val = action[y,x]
+        #                                     for _ in range(math.ceil(float(val)/self.NUMUNITS)):
+        #                                         mobile_queue.append((val%self.NUMUNITS,x,y))
+        #                 game_state.suppress_warnings(False)
+
+        #                 random.shuffle(struct_queue)
+        #                 random.shuffle(mobile_queue)
                         
-                        sp = np.array([game_state.type_cost(UNIT_TYPES[unit[0]],unit[3])[0]
-                                            for unit in struct_queue]).sum() # Structure Points
-                        mp = np.array([game_state.type_cost(UNIT_TYPES[unit[0]])[1]
-                                            for unit in struct_queue]).sum() # Mobile Points
+        #                 sp = np.array([game_state.type_cost(UNIT_TYPES[unit[0]],unit[3])[0]
+        #                                     for unit in struct_queue]).sum() # Structure Points
+        #                 mp = np.array([game_state.type_cost(UNIT_TYPES[unit[0]])[1]
+        #                                     for unit in struct_queue]).sum() # Mobile Points
 
-                        budget = game_state.get_resources()
+        #                 budget = game_state.get_resources()
 
-                        while (len(struct_queue) > 0 and sp > budget[0]):
-                            sp -= game_state.type_cost(UNIT_TYPES[struct_queue.pop(0)[0]])[0]
-                            invalid += 1
-                        while len(mobile_queue) > 0 and mp > budget[1]:
-                            mp -= game_state.type_cost(UNIT_TYPES[mobile_queue.pop(0)[0]])[1]
-                            invalid += 1
+        #                 while (len(struct_queue) > 0 and sp > budget[0]):
+        #                     sp -= game_state.type_cost(UNIT_TYPES[struct_queue.pop(0)[0]])[0]
+        #                     invalid += 1
+        #                 while len(mobile_queue) > 0 and mp > budget[1]:
+        #                     mp -= game_state.type_cost(UNIT_TYPES[mobile_queue.pop(0)[0]])[1]
+        #                     invalid += 1
 
-                        valid = len(struct_queue) + len(mobile_queue)
+        #                 valid = len(struct_queue) + len(mobile_queue)
 
-                        return valid, invalid, struct_queue, mobile_queue
+        #                 return valid, invalid, struct_queue, mobile_queue
 
-                    valid, invalid, structures, mobiles = gen_plan(action)
+        #             valid, invalid, structures, mobiles = gen_plan(action)
 
-                    self.on_turn(game_state_string, structures, mobiles)
+        #             self.on_turn(game_state_string, structures, mobiles)
 
-                elif stateType == 1:
-                    """
-                    If stateType == 1, this game_state_string string represents a single frame of an action phase
-                    """
-                    self.on_action_frame(game_state_string)
-                elif stateType == 2:
-                    """
-                    This is the end game message. This means the game is over so break and finish the program.
-                    """
-                    debug_write("Got end state, game over. Stopping algo.")
-                    done = True
-                    break
-                else:
-                    """
-                    Something is wrong? Received an incorrect or improperly formatted string.
-                    """
-                    debug_write("Got unexpected string with turnInfo: {}".format(
-                        game_state_string))
-            else:
-                """
-                Something is wrong? Received an incorrect or improperly formatted string.
-                """
-                debug_write("Got unexpected string : {}".format(game_state_string))
+        #         elif stateType == 1:
+        #             """
+        #             If stateType == 1, this game_state_string string represents a single frame of an action phase
+        #             """
+        #             self.on_action_frame(game_state_string)
+        #         elif stateType == 2:
+        #             """
+        #             This is the end game message. This means the game is over so break and finish the program.
+        #             """
+        #             debug_write("Got end state, game over. Stopping algo.")
+        #             done = True
+        #             break
+        #         else:
+        #             """
+        #             Something is wrong? Received an incorrect or improperly formatted string.
+        #             """
+        #             debug_write("Got unexpected string with turnInfo: {}".format(
+        #                 game_state_string))
+        #     else:
+        #         """
+        #         Something is wrong? Received an incorrect or improperly formatted string.
+        #         """
+        #         debug_write("Got unexpected string : {}".format(game_state_string))
 
-        return obs_space, reward, done, None    
+        # return obs_space, reward, done, None    
 
     def step(self, action=None, model=None):
         """ 
@@ -332,7 +344,7 @@ class GameEnv(Env):
 
                 self.on_turn(game_state_string, structures, mobiles)
 
-                obs_space = self.state
+                obs_space = self.dict_to_space()
                 reward = valid - invalid + 2*game_state.turn_number + 5*(game_state.my_health - game_state.enemy_health)
 
             elif stateType == 1:
@@ -518,3 +530,10 @@ class GameEnv(Env):
 
 env = GameEnv()
 # env.start()
+# log_path = os.path.join('Training', 'Logs')
+# model = PPO('MultiInputPolicy', env, verbose=1, tensorboard_log=log_path)
+# model.learn(total_timesteps=20000)
+
+# save_path = os.path.join('Training', 'Saved Models', 'Save_PPO')
+# model.save(save_path)
+env.start()
