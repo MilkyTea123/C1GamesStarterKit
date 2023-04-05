@@ -53,7 +53,8 @@ class GameEnv(Env):
         gamelib.debug_write('Configuring your custom algo strategy...')
         self.config = config
         global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP
-        global UNIT_TYPES
+        global UNIT_TYPES, WALL_UP_HP
+        global S_HEALTH
         WALL = config["unitInformation"][0]["shorthand"]
         SUPPORT = config["unitInformation"][1]["shorthand"]
         TURRET = config["unitInformation"][2]["shorthand"]
@@ -61,6 +62,8 @@ class GameEnv(Env):
         DEMOLISHER = config["unitInformation"][4]["shorthand"]
         INTERCEPTOR = config["unitInformation"][5]["shorthand"]
         UNIT_TYPES = [WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR]
+        S_HEALTH = [60,30,75]
+        WALL_UP_HP = 120
         MP = 1
         SP = 0
         # This is a good place to do initial setup
@@ -87,7 +90,16 @@ class GameEnv(Env):
         # self.starter_strategy(game_state)
         if structures != None:
             for structure in structures:
-                game_state.attempt_spawn(UNIT_TYPES[structure[0]], [structure[1], structure[2]])
+                if structure[3]:
+                    upped = game_state.attempt_upgrade([structure[1], structure[2]])
+                    if UNIT_TYPES[structure[0]] == WALL and upped > 0:
+                        self.state['board'][structure[1], structure[2], 1] += WALL_UP_HP
+                else:
+                    spawned = game_state.attempt_spawn(UNIT_TYPES[structure[0]], [structure[1], structure[2]])
+                    if spawned > 0:
+                        self.state['board'][structure[1], structure[2]] = [structure[0],
+                                                                           S_HEALTH[structure[0]]]
+
         if mobiles != None:
             for mobile in mobiles:
                 game_state.attempt_spawn(UNIT_TYPES[mobile[0]], [mobile[1], mobile[2]])
@@ -261,6 +273,13 @@ class GameEnv(Env):
                 """
 
                 game_state = GameState(self.config, game_state_string)
+                self.state['board'] = game_state.get_positions()
+                self.state['p1Stats'] = [game_state.get_resource(0,0),
+                                         game_state.get_resource(1,0),
+                                         game_state.my_health]
+                self.state['p2Stats'] = [game_state.get_resource(0,1),
+                                         game_state.get_resource(1,1),
+                                         game_state.enemy_health]
 
                 action = np.array(self.action_space.sample())
                 def gen_plan(action): 
@@ -312,6 +331,9 @@ class GameEnv(Env):
                 valid, invalid, structures, mobiles = gen_plan(action)
 
                 self.on_turn(game_state_string, structures, mobiles)
+
+                obs_space = self.state
+                reward = valid - invalid + 2*game_state.turn_number + 5*(game_state.my_health - game_state.enemy_health)
 
             elif stateType == 1:
                 """
@@ -495,4 +517,4 @@ class GameEnv(Env):
         return filtered
 
 env = GameEnv()
-env.start()
+# env.start()
