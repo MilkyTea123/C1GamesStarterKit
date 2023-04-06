@@ -238,4 +238,3 @@ class GameMap:
         """
         if(self.enable_warnings):
             debug_write(message)
-            

@@ -43,6 +43,7 @@ class AlgoCore(object):
         """
         pass
 
+
     def start(self):
         """ 
         Start the parsing loop.
@@ -51,7 +52,6 @@ class AlgoCore(object):
         The algo continues this loop until it recieves the "End" turn message from the game.
         """
         debug_write(BANNER_TEXT)
-
 
         while True:
             # Note: Python blocks and hangs on stdin. Can cause issues if connections aren't setup properly and may need to
@@ -71,18 +71,13 @@ class AlgoCore(object):
                     This is the game turn game state message. Algo must now print to stdout 2 lines, one for build phase one for
                     deploy phase. Printing is handled by the provided functions.
                     """
-
-
-
                     self.on_turn(game_state_string)
-
                 elif stateType == 1:
                     """
                     If stateType == 1, this game_state_string string represents a single frame of an action phase
                     """
                     self.on_action_frame(game_state_string)
                 elif stateType == 2:
-                    debug_write('type', 2)
                     """
                     This is the end game message. This means the game is over so break and finish the program.
                     """
