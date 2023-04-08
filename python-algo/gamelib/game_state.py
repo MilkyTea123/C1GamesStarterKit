@@ -78,7 +78,7 @@ class GameState:
         UPGRADE = config["unitInformation"][7]["shorthand"]
         UNIT_TYPE_TO_INDEX[UPGRADE] = 7
 
-        ALL_UNITS = [SCOUT, DEMOLISHER, INTERCEPTOR, WALL, SUPPORT, TURRET]
+        ALL_UNITS = [WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR]
         STRUCTURE_TYPES = [WALL, SUPPORT, TURRET]
 
         self.ARENA_SIZE = 28
@@ -302,7 +302,6 @@ class GameState:
             return [unit_def.get('upgrade', {}).get('cost1', cost_base[SP]), unit_def.get('upgrade', {}).get('cost2', cost_base[MP])]
 
         return cost_base
-
 
     def can_spawn(self, unit_type, location, num=1):
         """Check if we can spawn a unit at a location. 

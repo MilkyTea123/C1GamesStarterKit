@@ -4,29 +4,7 @@ import math
 import warnings
 from sys import maxsize
 import json
-
-import gym
-from gym import Env
-from gym.spaces import Discrete, Box, Dict, Tuple, MultiBinary, MultiDiscrete
-
 import numpy as np
-import math
-import random
-import os
-
-from stable_baselines3 import PPO
-# from stable_baselines3.common.vec_env import DummyVecEnv
-# from stable_baselines3.common.evaluation import evaluate_policy
-
-import gamelib
-import random
-import math
-import warnings
-from sys import maxsize
-import json
-
-from gamelib.game_state import GameState
-from gamelib.util import get_command, debug_write, BANNER_TEXT, send_command
 
 
 """
@@ -43,11 +21,38 @@ Advanced strategy tips:
 """
 
 class AlgoStrategy(gamelib.AlgoCore):
+    global ARENA_SIZE, HALF_ARENA
+    ARENA_SIZE = 28
+    HALF_ARENA = int(ARENA_SIZE/2)
+
     def __init__(self):
         super().__init__()
         seed = random.randrange(maxsize)
         random.seed(seed)
         gamelib.debug_write('Random seed: {}'.format(seed))
+
+        self.row_one = [[x,13,0] for x in range(ARENA_SIZE)]
+        self.initial = self.__initial_turn()
+        self.base = self.__base()
+
+    def __initial_turn(self):
+        initial = self.row_one.copy()
+        initial.remove([14,13,0])
+        other_walls = np.array([[2,11],[2,12],[25,12],[25,11],
+                                [12,1],[13,0],[14,0],[15,1]])
+        other_walls = np.append(other_walls,np.zeros((len(other_walls),1)),axis=1)
+        initial = np.concatenate([initial,other_walls,[[11,8,2],[16,8,2]]])
+        return initial.astype(np.int8)
+
+    def __base(self):
+        walls = [[13,0,0],[14,0,0],[12,1,0],[15,1,0]]
+        turrets = [[11,8],[16,8],
+                   [9,4],[18,4],
+                   [6,7],[21,7],
+                   [3,10],[24,10]]
+        turrets = np.concatenate([turrets,2*np.ones((len(turrets),1))],axis=1)
+        form = np.concatenate([turrets,walls])
+        return form
 
     def on_game_start(self, config):
         """ 
@@ -55,13 +60,15 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         gamelib.debug_write('Configuring your custom algo strategy...')
         self.config = config
-        global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP
+        global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP, ALL_UNITS, STRUCTURE_TYPES
         WALL = config["unitInformation"][0]["shorthand"]
         SUPPORT = config["unitInformation"][1]["shorthand"]
         TURRET = config["unitInformation"][2]["shorthand"]
         SCOUT = config["unitInformation"][3]["shorthand"]
         DEMOLISHER = config["unitInformation"][4]["shorthand"]
         INTERCEPTOR = config["unitInformation"][5]["shorthand"]
+        ALL_UNITS = [WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR]
+        STRUCTURE_TYPES = [WALL, SUPPORT, TURRET]
         MP = 1
         SP = 0
         # This is a good place to do initial setup
@@ -76,13 +83,49 @@ class AlgoStrategy(gamelib.AlgoCore):
         game engine.
         """
         game_state = gamelib.GameState(self.config, turn_state)
-        gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
+        # gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
 
-        self.starter_strategy(game_state)
+        self.strategy(game_state)
 
         game_state.submit_turn()
 
+    def strategy(self, game_state):
+        if game_state.turn_number == 0:
+            self.implement_form(self.initial, game_state)
+            game_state.attempt_spawn(SCOUT,[11,2],5)
+        else:
+            priority = (self.row_one, self.base)
+            sp = 40
+            for form in priority:
+                if sp < 1:
+                    break
+                sp = self.implement_form(form, game_state)
+                
+
+    def satisfied(self, units, game_state):
+        # unit is [[x,y],type]
+        for unit in units:
+            loc, _ = unit
+            if game_state.game_map.__getitem(loc) == []:
+                return False
+        return 
+
+    # assumes only structures in forms
+    def implement_form(self, units, game_state):
+        sp = 40
+        # unit is [x,y,type]
+        for unit in units:
+            if sp < 1:
+                break
+            x, y, type = unit
+            type = ALL_UNITS[int(type)]
+            x = int(x)
+            y = int(y)
+            if game_state.can_spawn(type, [x,y]):
+                game_state.attempt_spawn(type, [x,y])
+                sp -= game_state.type_cost(type)[0]
+        return sp
 
     """
     NOTE: All the methods after this point are part of the sample starter-algo
