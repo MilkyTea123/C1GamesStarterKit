@@ -34,6 +34,13 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.row_one = [[x,13,0] for x in range(ARENA_SIZE)]
         self.initial = self.__initial_turn()
         self.base = self.__base()
+        self.backline = self.__backline()
+        self.row_two = [[int(x),12,0] for x in np.arange(1,ARENA_SIZE-1)]
+        self.row_three = self.__row_three()
+        self.row_four = np.concatenate([[[int(x),10,2] for x in np.arange(3,25,2)],
+                                        [[int(x),10,0] for x in np.arange(4,24,2)]])
+        self.priority = (self.row_one, self.base, self.backline, self.row_two,
+                         self.row_three, self.row_four)
 
     def __initial_turn(self):
         initial = self.row_one.copy()
@@ -53,6 +60,16 @@ class AlgoStrategy(gamelib.AlgoCore):
                    [13,4],[14,4]]
         turrets = np.concatenate([turrets,2*np.ones((len(turrets),1))],axis=1)
         form = np.concatenate([turrets,walls])
+        return form
+
+    def __backline(self):
+        xes = (13,14,10,17,7,20,4,23)
+        form = [[x,11,2] for x in xes]
+        return form
+    
+    def __row_three(self):
+        xes = (12,15,11,16,9,18,8,19,6,21,5,22,3,24,2,25)
+        form = [[x,11,0] for x in xes]
         return form
 
     def on_game_start(self, config):
@@ -99,12 +116,12 @@ class AlgoStrategy(gamelib.AlgoCore):
                 mobile_spawn = random.choice(self.find_launch(game_state))
                 mp = game_state.get_resources()[1]
                 if mp < 25:
-                    priority = (self.row_one, self.base)
                     sp = 40
-                    for form in priority:
+                    for form in self.priority:
                         if sp < 1:
                             break
-                        sp = self.implement_form(form, game_state)
+                        elif not self.satisfied(form, game_state):
+                            sp = self.implement_form(form, game_state)
                     self.periodic_mobiles(game_state)
                 elif not self.self_obstruct(game_state) and game_state.can_spawn(
                             SCOUT,mobile_spawn,int(mp)):
@@ -116,12 +133,12 @@ class AlgoStrategy(gamelib.AlgoCore):
                         game_state.attempt_spawn(DEMOLISHER,mobile_spawn)
 
     def satisfied(self, units, game_state):
-        # unit is [[x,y],type]
+        # unit is [x,y,type]
         for unit in units:
-            loc, _ = unit
-            if game_state.game_map.__getitem(loc) == []:
+            x, y, _ = unit
+            if game_state.game_map.__getitem__([int(x),int(y)]) == []:
                 return False
-        return 
+        return True
 
     def periodic_mobiles(self, game_state):
         possible = self.find_launch(game_state)
