@@ -38,7 +38,7 @@ class AlgoStrategy(gamelib.AlgoCore):
     def __initial_turn(self):
         initial = self.row_one.copy()
         initial.remove([14,13,0])
-        other_walls = np.array([[2,11],[2,12],[25,12],[25,11],
+        other_walls = np.array([[1,12],[2,12],[25,12],[26,12],
                                 [12,1],[13,0],[14,0],[15,1]])
         other_walls = np.append(other_walls,np.zeros((len(other_walls),1)),axis=1)
         initial = np.concatenate([initial,other_walls,[[11,8,2],[16,8,2]]])
@@ -49,7 +49,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         turrets = [[11,8],[16,8],
                    [9,4],[18,4],
                    [6,7],[21,7],
-                   [3,10],[24,10]]
+                   [3,10],[24,10],
+                   [13,4],[14,4]]
         turrets = np.concatenate([turrets,2*np.ones((len(turrets),1))],axis=1)
         form = np.concatenate([turrets,walls])
         return form
@@ -91,17 +92,28 @@ class AlgoStrategy(gamelib.AlgoCore):
         game_state.submit_turn()
 
     def strategy(self, game_state):
-        if game_state.turn_number == 0:
-            self.implement_form(self.initial, game_state)
-            game_state.attempt_spawn(SCOUT,[11,2],5)
-        else:
-            priority = (self.row_one, self.base)
-            sp = 40
-            for form in priority:
-                if sp < 1:
-                    break
-                sp = self.implement_form(form, game_state)
-                
+            if game_state.turn_number == 0:
+                self.implement_form(self.initial, game_state)
+                game_state.attempt_spawn(SCOUT,[11,2],5)
+            else:
+                mobile_spawn = random.choice(self.find_launch(game_state))
+                mp = game_state.get_resources()[1]
+                if mp < 25:
+                    priority = (self.row_one, self.base)
+                    sp = 40
+                    for form in priority:
+                        if sp < 1:
+                            break
+                        sp = self.implement_form(form, game_state)
+                    self.periodic_mobiles(game_state)
+                elif not self.self_obstruct(game_state) and game_state.can_spawn(
+                            SCOUT,mobile_spawn,int(mp)):
+                    game_state.attempt_spawn(SCOUT,mobile_spawn,int(mp))
+                else:
+                    self.periodic_mobiles(game_state)
+                    if game_state.turn_number % 3 == 0 and game_state.can_spawn(
+                        DEMOLISHER,mobile_spawn,1):
+                        game_state.attempt_spawn(DEMOLISHER,mobile_spawn)
 
     def satisfied(self, units, game_state):
         # unit is [[x,y],type]
@@ -110,6 +122,20 @@ class AlgoStrategy(gamelib.AlgoCore):
             if game_state.game_map.__getitem(loc) == []:
                 return False
         return 
+
+    def periodic_mobiles(self, game_state):
+        possible = self.find_launch(game_state)
+        int_spawn = random.choice(possible)
+        if game_state.can_spawn(INTERCEPTOR, int_spawn):
+            game_state.attempt_spawn(INTERCEPTOR, int_spawn)
+        if game_state.turn_number % 5 == 0 and not self.self_obstruct(game_state):
+            scout_spawn = random.choice(possible)
+            if game_state.can_spawn(SCOUT, scout_spawn):
+                game_state.attempt_spawn(SCOUT, scout_spawn)
+
+    def self_obstruct(self, game_state):
+        mobile_spawn = random.choice(self.find_launch(game_state))
+        return game_state.find_path_to_edge(mobile_spawn)[-1][1] < HALF_ARENA-1
 
     # assumes only structures in forms
     def implement_form(self, units, game_state):
@@ -126,6 +152,15 @@ class AlgoStrategy(gamelib.AlgoCore):
                 game_state.attempt_spawn(type, [x,y])
                 sp -= game_state.type_cost(type)[0]
         return sp
+
+    def find_launch(self, game_state):
+        possible = []
+        game_map = game_state.game_map
+        for edge in game_map.get_edges()[2:]:
+            for loc in edge:
+                if game_map.__getitem__(loc) == []:
+                    possible.append(loc)
+        return possible
 
     """
     NOTE: All the methods after this point are part of the sample starter-algo

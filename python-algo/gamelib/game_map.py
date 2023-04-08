@@ -2,6 +2,8 @@ import math
 from .unit import GameUnit
 from .util import debug_write
 
+import numpy as np
+
 class GameMap:
     """Holds data about the current game map and provides functions
     useful for getting information related to the map.
@@ -231,6 +233,10 @@ class GameMap:
         x2, y2 = location_2
 
         return math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+
+    def on_edge(self, location):
+        return np.array([[point == location for point in edge] 
+                         for edge in self.get_edges()]).any()
 
     def warn(self, message):
         """
